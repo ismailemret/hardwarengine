@@ -1,0 +1,35 @@
+{
+    "tasks": [
+        {
+            "type": "cppbuild",
+            "label": "Build All Files",
+            "command": "cl.exe",
+            "args": [
+                "/Zi",
+                "/EHsc",
+                "/nologo",
+                "/Fe${workspaceFolder}\\bin\\hardwarengine.exe",
+                "${workspaceFolder}\\src\\main.c",
+                "${workspaceFolder}\\src\\ram_sensor.c",
+                "${workspaceFolder}\\src\\cpu_sensor.c",
+                "${workspaceFolder}\\src\\gpu_sensor.c",
+                "${workspaceFolder}\\src\\kernel_utils.c",
+                "/I${workspaceFolder}\\include",
+                "/link",
+                "kernel32.lib"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$msCompile"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "Compile core engine without GUI dependencies"
+        }
+    ],
+    "version": "2.0.0"
+}

@@ -1,0 +1,17 @@
+
+# Raylib binary & headers
+lib/
+include/raylib*.h
+include/rlgl.h
+include/raymath.h
+*.lib
+*.dll
+*.a
+
+# Build outputs
+bin/
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.idb
