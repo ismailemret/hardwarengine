@@ -1,21 +1,19 @@
 #include "../include/telemetry.h"
 
 int get_ram_status(RAMStatus *status) {
-    if (status == NULL) {
-        return -1;
+    if (!status) return 0;
+
+    MEMORYSTATUSEX mem_stat;
+    mem_stat.dwLength = sizeof(MEMORYSTATUSEX);
+
+    if (!GlobalMemoryStatusEx(&mem_stat)) {
+        return 0;
     }
 
-    MEMORYSTATUSEX mem_status;
-    mem_status.dwLength = sizeof(mem_status);
+    status->memory_load = mem_stat.dwMemoryLoad;
+    status->total_ram   = mem_stat.ullTotalPhys;
+    status->avail_ram   = mem_stat.ullAvailPhys;
+    status->used_ram    = mem_stat.ullTotalPhys - mem_stat.ullAvailPhys;
 
-    if (!GlobalMemoryStatusEx(&mem_status)) {
-        return -1;
-    }
-
-    status->memory_load = mem_status.dwMemoryLoad;
-    status->total_ram = mem_status.ullTotalPhys;
-    status->avail_ram = mem_status.ullAvailPhys;
-    status->used_ram = mem_status.ullTotalPhys - mem_status.ullAvailPhys;
-
-    return 0;
+    return 1;
 }
