@@ -165,11 +165,17 @@ static inline void read_intel_core_msr(CpuTelemetry *telemetry, uint32_t i, msr_
     if (vid == 0) vid = (uint32_t)(msr_198 & 0xFFFF);
     core->voltage_v = (float)vid / 8192.0f;
 
-    // Hardware Effective Clock (APERF/MPERF)
+    // Prefer the requested/current ratio so idle C-states do not pull the displayed clock down.
+    uint32_t target_ratio = (uint32_t)((msr_198 >> 8) & 0xFF);
+    if (target_ratio > 0) {
+        core->freq_mhz = (float)telemetry->base_bclk_mhz * (float)target_ratio;
+    }
+
+    // Fall back to effective clock when IA32_PERF_STATUS does not expose a ratio.
     uint64_t cur_mperf = read_msr(i, MSR_INTEL_MPERF);
     uint64_t cur_aperf = read_msr(i, MSR_INTEL_APERF);
 
-    if (core->prev_mperf > 0 && cur_mperf > core->prev_mperf) {
+    if (target_ratio == 0 && core->prev_mperf > 0 && cur_mperf > core->prev_mperf) {
         uint64_t d_mperf = cur_mperf - core->prev_mperf;
         uint64_t d_aperf = cur_aperf - core->prev_aperf;
         if (d_mperf > 0) {
