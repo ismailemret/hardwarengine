@@ -1,72 +1,103 @@
+
+<div align="center">
+
 # hardwarengine
 
-Kernel düzeyinde (Ring 0) donanım register'larına doğrudan erişerek CPU, GPU ve sistem kaynaklarını mikrosaniye gecikmeyle izleyen, sıfır-overhead hedefli düşük seviyeli C/C++ telemetri ve HUD motoru.
+[![Language](https://img.shields.io/badge/Language-C99-blue.svg)](https://en.wikipedia.org/wiki/C99)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20x64-0078D6.svg)](https://www.microsoft.com/windows)
+[![Kernel](https://img.shields.io/badge/Kernel-Ring%200%20(PawnIO)-red.svg)](https://github.com/namazso/PawnIO)
+[![License](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE)
 
-WMI, COM veya hantal 3. parti katmanlar kullanılmadan; PawnIO modern kernel arayüzü, mimariye özel MSR (Model-Specific Registers), native NT API çağrıları ve dinamik donanım kütüphaneleri üzerinden veri toplanır.
+**Microsecond-latency, zero-overhead low-level telemetry engine & in-game HUD backend for Windows x64.**
 
----
+[English](README.md) • [Türkçe](README_TR.md)
 
-## Mimari ve Temel Prensipler
-
-* **Modern Kernel Köprüsü (PawnIO Entegrasyonu):** Eski, savunmasız sürücüler (WinRing0 vb.) yerine Windows HVCI (Hypervisor-Protected Code Integrity) ve Çekirdek Yalıtım (Core Isolation) ile tam uyumlu çalışan modern **PawnIO** altyapısı kullanılır. Ring 0 MSR okumaları, `PawnIOLib.dll` üzerinden doğrudan yürütülebilir bytecode blob'ları (`IntelMSR.bin`, `AMDFamily17.bin`) ile donanıma güvenli ve imza bloklarına takılmadan iletilir.
-* **Zero-Abstraction Data Pipeline:** WMI/CIM katmanlarının getirdiği 100-300ms gecikme ve yüksek CPU maliyeti yerine doğrudan donanım portları, MSR register'ları ve sürücü yürütme kanalları kullanılır.
-* **Hibrit Çekirdek ve Topoloji Analizi:** `GetLogicalProcessorInformationEx` ile sistem topolojisi dinamik taranır; Intel Performance (P) ve Efficient (E) çekirdekleri veya AMD Zen CCX yapıları thread bazında izole edilir.
-* **Deterministic Kernel Timer:** Telemetri örnekleme döngüsü standart `Sleep()` yerine `CreateWaitableTimerExW` (High Resolution Waitable Timer) ile kernel düzeyinde 100 ms (10 Hz) periyotla çalışır; 2.0 saniyelik hareketli ortalama filtresiyle işlenir.
-* **Minimal Memory & CPU Footprint:** Harici runtime bağımlılığı yoktur. Bellek kullanımı PSAPI üzerinden sürekli izlenir (hedef: < 2 MB Working Set, <%0.05 CPU yükü).
+</div>
 
 ---
 
-## Katmanlar ve Çalışma Mekanizması
+<a name="english"></a>
+## English
 
-### 1. CPU Telemetrisi & Ring 0 MSR Katmanı (PawnIO Pipeline)
-* **Sürücü & Bytecode Motoru:** Windows Registry üzerinden tespit edilen `PawnIOLib.dll` dinamik bağlanır (`pawnio_open`, `pawnio_load`, `pawnio_execute`). İşlemci mimarisine uygun bytecode blob'u belleğe yüklenir ve thread affinity kilitlenerek `ioctl_read_msr` rutinleri çalıştırılır.
-* **Intel MSR Decoding:**
-  * `0x1A2` (`IA32_TEMPERATURE_TARGET`): Çip düzeyinde dinamik hardware TjMax çözünürlüğü.
-  * `0x19C` (`IA32_THERM_STATUS`): Dijital termal sensör (DTS) okuması ve hardware PROCHOT (thermal throttling) tespiti.
-  * `0x198` (`IA32_PERF_STATUS`): Donanımsal VID üzerinden anlık çekirdek voltajı hesabı.
-  * `0x0E7` / `0x0E8` (`IA32_MPERF` / `IA32_APERF`): Donanımsal saat çevrim oranıyla gerçek efektif çekirdek frekansı hesabı.
-* **AMD Zen Architecture:**
-  * `0xC0010064` (`MSR_AMD_PSTATE_0`): P-State FID/DID çarpanları ve voltaj hesaplama.
-  * `0xC0010293` (`MSR_AMD_HARDWARE_THERMAL`): Tctl/Tdie referans tavanı ve termal durum takibi.
-* **Kullanım Yüzdesi:** `ntdll.dll` içerisinden doğrudan çözülen `NtQuerySystemInformation` (`SystemProcessorPerformanceInformation`) ile kernel/user/idle delta analizi.
+A low-level telemetry engine written in pure C99 designed to bypass slow, high-overhead abstractions (WMI, COM, CIM). Direct access to Ring 0 Model-Specific Registers (MSR), native Windows NT syscalls, and dynamic hardware driver bindings to extract true hardware operational metrics with near-zero latency and minimal CPU/RAM footprint.
 
-### 2. GPU Telemetri Katmanı (Geliştirme Aşamasında)
-* **Dinamik Runtime Binding:** Derleme anında `.lib` bağımlılığı olmadan çalışma anında (`LoadLibraryA` / `GetProcAddress`) NVML (`nvml.dll`) arayüzü bağlanır.
-* **NVIDIA (NVML):** Çekirdek frekansı, bellek frekansı, sıcaklık, hotspot, fan RPM, güç tüketimi (mW) ve anlık VRAM kullanımı.
-* **DirectX Fallback:** NVML bulunamayan sistemlerde `dxgi.dll` (`IDXGIFactory` / `IDXGIAdapter`) üzerinden donanım adı ve tahsis edilen VRAM tespiti.
+### System Architecture & Data Flow
 
-### 3. Bellek & Süreç Öz-İzleme (Self-Profiling)
-* **RAM:** `GlobalMemoryStatusEx` ile fiziksel/kullanılabilir bellek ve anlık yük yüzdesi.
-* **Process Self-Metrics:** Motorun kendi getirdiği yükü doğrulamak için `GetProcessTimes` ve `K32GetProcessMemoryInfo` (Working Set & Private Commit Size) analitiği.
+```mermaid
+graph TD
+    A[Hardware: CPU / GPU / RAM] -->|Ring 0 MSR Execution| B[PawnIO Driver & Bytecode Runtime]
+    A -->|Direct Syscalls| C[ntdll.dll: NtQuerySystemInformation]
+    A -->|Dynamic Runtime Binding| D[NVML.dll / DXGI Fallback]
+    
+    B --> E[kernel_utils.c / cpu_sensor.c]
+    C --> F[ram_sensor.c / self_sensor.c]
+    D --> G[gpu_sensor.c]
+    
+    E --> H[hardwarengine Core Engine]
+    F --> H
+    G --> H
+    
+    H -->|High-Resolution Timer @ 100ms| I[CLI Output & Telemetry Ring Buffer]
+
+```
+
+### Telemetry Pipeline & Metric Specifications
+
+| Subsystem | Metric | Primary Source / Mechanism | Latency Target | Overhead |
+| --- | --- | --- | --- | --- |
+| **CPU Core** | Real Effective Clock | MSR (`IA32_APERF` / `IA32_MPERF`) | Sub-microsecond | $\approx 0$ cycles |
+| **CPU Thermal** | Core / Package Temp | MSR (`IA32_THERM_STATUS` + TjMax) | Sub-microsecond | $\approx 0$ cycles |
+| **CPU Power** | Core VID / Voltage | MSR (`IA32_PERF_STATUS` / AMD P-State) | Sub-microsecond | $\approx 0$ cycles |
+| **CPU Load** | Kernel / User Deltas | `NtQuerySystemInformation` (Native NT API) | $< 10\,\mu\text{s}$ | Zero allocation |
+| **GPU (Discrete)** | Clocks, Temp, VRAM, Power | NVML Dynamic Runtime API (`nvml.dll`) | $< 50\,\mu\text{s}$ | Dynamic load |
+| **System Memory** | Physical RAM In-Use / Free | `GlobalMemoryStatusEx` | $< 5\,\mu\text{s}$ | Minimal |
+| **Self-Profiler** | Working Set & CPU Usage | `K32GetProcessMemoryInfo` + `GetProcessTimes` | $< 10\,\mu\text{s}$ | Self-tracking |
+
+### Core Architectural Principles
+
+* **Modern Kernel Bridge (PawnIO Integration):** Replaces legacy, vulnerable driver stacks (WinRing0) with **PawnIO**, fully compatible with Windows HVCI (Hypervisor-Protected Code Integrity) and Core Isolation. Ring 0 MSR reads execute directly via signed bytecode modules (`IntelMSR.bin`, `AMDFamily17.bin`) through `PawnIOLib.dll`.
+* **Zero-Abstraction Pipeline:** Completely eliminates 100–300 ms delays and high context-switch penalties caused by WMI/CIM infrastructure.
+* **Hybrid Core & Topology Mapping:** Scans system topology dynamically using `GetLogicalProcessorInformationEx` to map Intel Performance/Efficient (P/E) cores and AMD Zen CCX complexes on a per-thread basis.
+* **Deterministic Kernel Timer:** Operates at 100 ms (10 Hz) using `CreateWaitableTimerExW` (High-Resolution Timer API) with an internal 2.0-second moving average filter.
+* **Ultra-Low Resource Footprint:** Pure Win32/NT execution without external runtime dependencies (target: `< 2 MB` Working Set, `< 0.05%` CPU load).
+
+### Subsystems Breakdown
+
+* **CPU & Ring 0 MSR Layer:**
+* Dynamically locates and links `PawnIOLib.dll` from the system registry. Locks thread affinity per physical core to execute `ioctl_read_msr`.
+* **Intel Decoding:** `0x1A2` (`IA32_TEMPERATURE_TARGET` TjMax), `0x19C` (`IA32_THERM_STATUS` DTS & PROCHOT), `0x198` (`IA32_PERF_STATUS` VID), `0x0E7`/`0x0E8` (`IA32_APERF`/`IA32_MPERF` true frequency).
+* **AMD Zen Decoding:** `0xC0010064` (`MSR_AMD_PSTATE_0` multipliers), `0xC0010293` (`MSR_AMD_HARDWARE_THERMAL` Tctl/Tdie offsets).
+* **Core Load:** Direct `ntdll.dll` resolution of `NtQuerySystemInformation` (`SystemProcessorPerformanceInformation`).
+
+
+* **GPU Telemetry Layer:**
+* Resolves `nvml.dll` dynamically at runtime via `LoadLibraryA` / `GetProcAddress` (zero link-time dependency).
+* **NVIDIA (NVML):** Core/Memory clocks, Core/Hotspot temperatures, Fan RPM, power draw (mW), and active VRAM footprint.
+* **DirectX Fallback:** Automatic failover to `dxgi.dll` (`IDXGIFactory` / `IDXGIAdapter`) for adapter identification and basic VRAM telemetry if NVML is absent.
+
+
+* **Memory & Engine Self-Profiling:**
+* **RAM:** `GlobalMemoryStatusEx` tracking physical commit limits and active system memory load.
+* **Engine Self-Metrics:** Built-in instrumentation tracking its own execution via `GetProcessTimes` and `K32GetProcessMemoryInfo` (Working Set & Private Commit Size).
+
+
+
+### Project Roadmap & Planned Capabilities
+
+* [x] Ring 0 MSR CPU frequency, temperature, and voltage extraction (Intel/AMD)
+* [x] Win32 high-resolution deterministic kernel timer (100 ms cadence)
+* [x] Native NT API memory and utilization polling
+* [ ] Runtime dynamic NVML & DXGI GPU extraction layer
+* [ ] Low-overhead in-game HUD overlay via Direct3D / Vulkan hook
+* [ ] Embedded Controller (EC) dynamic fan-curve & power limit orchestration
+* [ ] Real-time hardware throttling and bottleneck detection engine
 
 ---
 
-## Proje Tamamlandığında Sağlanacak Yetenekler
 
-1. **Oyun İçi Düşük Gecikmeli HUD (In-Game Overlay):**
-   * Raylib/DirectX framework'ü ile tam ekran oyunların üzerine doğrudan çizilen, sıfıra yakın giriş gecikmeli (input lag), GPU/CPU saatlerini, kare hızlarını ve termal sınırları gösteren donanım HUD'ı.
-2. **Özel Fan Eğrisi & Güç Yönetimi:**
-   * Gömülü Denetleyici (EC - Embedded Controller) register'larına erişim sağlanarak laptop/masaüstü sistemlerde BIOS sınırlamalarını aşan dinamik fan ve güç profili kontrolü.
-3. **Kayıp/Tıkanıklık (Bottleneck) Analizörü:**
-   * Efektif saat frekansları ile çekirdek yük delta analizi üzerinden termal kısma (thermal throttle), güç sınırı (power limit throttle) ve çekirdek darboğazı durumlarının gerçek zamanlı tespiti.
 
----
+```
 
-## Yapı ve Dosya Planı
+```
 
-```text
-hardwarengine/
-├── include/
-│   └── telemetry.h          # Veri yapıları, MSR adresleri ve fonksiyon prototipleri
-├── src/
-│   ├── cpu_sensor.c         # Topoloji tarama, __cpuid vendor ayrımı, NT API ve MSR okuyucu
-│   ├── gpu_sensor.c         # Dinamik NVML bağlayıcı ve DXGI fallback katmanı
-│   ├── kernel_utils.c       # PawnIO library binder ve MSR bytecode yürütücü
-│   ├── ram_sensor.c         # Win32 fiziksel bellek durum okuyucu
-│   ├── self_sensor.c        # Süreç bellek ve işlemci öz-izleme katmanı
-│   └── main.c               # 100ms High-Resolution Waitable Timer ve terminal dashboard
-├── bin/
-│   ├── hardwarengine.exe    # Derlenen ana ikili
-│   ├── IntelMSR.bin         # PawnIO Intel MSR bytecode modülü
-│   └── AMDFamily17.bin      # PawnIO AMD Zen MSR bytecode modülü
-└── README.md
+```
