@@ -93,11 +93,3 @@ graph TD
 * [ ] Real-time hardware throttling and bottleneck detection engine
 
 ---
-
-
-
-```
-
-```
-
-```
