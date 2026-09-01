@@ -5,7 +5,7 @@
 [![Language](https://img.shields.io/badge/Dil-C99-blue.svg)](https://en.wikipedia.org/wiki/C99)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20x64-0078D6.svg)](https://www.microsoft.com/windows)
 [![Kernel](https://img.shields.io/badge/Kernel-Ring%200%20(PawnIO)-red.svg)](https://github.com/namazso/PawnIO)
-[![License](https://img.shields.io/badge/Lisans-GPLv3-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Proprietary-red.svg)](PROPRIETARY_LICENSE)
 
 **Windows x64 için mikrosaniye gecikmeli, sıfır maliyetli düşük seviyeli telemetri motoru ve oyun içi HUD arka ucu.**
 
