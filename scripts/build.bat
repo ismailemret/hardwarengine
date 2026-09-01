@@ -1,0 +1,35 @@
+@echo off
+setlocal
+set "ROOT=%~dp0..\"
+
+taskkill /f /im hardwarengine.exe >nul 2>&1
+
+call :clean_artifacts
+call "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" -arch=x64
+if errorlevel 1 exit /b %errorlevel%
+
+if not exist "%ROOT%bin" mkdir "%ROOT%bin"
+
+echo [*] Kaynak dosyasi derleniyor (app.rc -> app.res)...
+rc.exe /nologo /fo"%ROOT%app.res" "%ROOT%app.rc"
+if errorlevel 1 exit /b %errorlevel%
+
+echo [*] Monolitik hardwarengine.exe derleniyor...
+cl.exe /O2 /EHsc /nologo /Fe"%ROOT%bin\hardwarengine.exe" ^
+    "%ROOT%src\main.c" ^
+    "%ROOT%src\cpu_sensor.c" ^
+    "%ROOT%src\gpu_sensor.c" ^
+    "%ROOT%src\ram_sensor.c" ^
+    "%ROOT%src\self_sensor.c" ^
+    "%ROOT%src\kernel_utils.c" ^
+    "%ROOT%app.res" ^
+    /I"%ROOT%include" ^
+    /link /DEBUG:NONE /MANIFEST:EMBED /MANIFESTUAC:NO /MANIFESTINPUT:"%ROOT%app.manifest" kernel32.lib psapi.lib advapi32.lib
+
+set "BUILD_EXIT=%errorlevel%"
+call :clean_artifacts
+exit /b %BUILD_EXIT%
+
+:clean_artifacts
+for /r "%ROOT%" %%F in (*.obj *.pdb *.ilk *.idb *.exp *.lib *.dll *.res) do del /q "%%F" >nul 2>&1
+exit /b 0

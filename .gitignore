@@ -7,16 +7,23 @@ include/raymath.h
 *.dll
 *.a
 
-# Build outputs
+# Build outputs & artifacts
 bin/
 *.exe
 *.obj
 *.pdb
 *.ilk
 *.idb
+*.exp
+*.res
+
+# IExpress & packaging artifacts
+scripts/*.sed
+Setup.exe
 
 # GUI sources
 gui/
 
-# VS Code local settings
-.vscode/
+# VS Code settings
+.vscode/*
+!.vscode/tasks.json

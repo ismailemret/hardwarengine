@@ -11,7 +11,7 @@
 #define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
 #endif
 
-#define SAMPLE_COUNT 20 // 20 samples * 100ms = 2000ms (2.0s window)
+#define SAMPLE_COUNT 20
 
 typedef struct {
     float usage_pct;
@@ -25,13 +25,9 @@ typedef struct {
     float package_temp_c;
     float max_voltage_v;
     CoreAccumulator cores[MAX_LOGICAL_CORES];
-    
-    // RAM Metrics
     uint64_t memory_load;
     uint64_t used_ram;
     uint64_t total_ram;
-
-    // Self Profiling Metrics
     float self_cpu_pct;
     uint64_t self_working_set;
     uint64_t self_private;
@@ -56,20 +52,13 @@ int main(void) {
 
     init_self_metrics(&self);
 
-    // High-resolution periodic waitable timer (100ms / 10 Hz)
-    HANDLE hTimer = CreateWaitableTimerExW(
-        NULL,
-        NULL,
-        CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
-        TIMER_ALL_ACCESS
-    );
-
+    HANDLE hTimer = CreateWaitableTimerExW(NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
     if (!hTimer) {
         hTimer = CreateWaitableTimerW(NULL, FALSE, NULL);
     }
 
     LARGE_INTEGER due_time;
-    due_time.QuadPart = -1000000LL; // 100ms relative offset (in 100ns units)
+    due_time.QuadPart = -1000000LL;
     SetWaitableTimer(hTimer, &due_time, 100, NULL, NULL, FALSE);
 
     TelemetryAccumulator acc;
@@ -77,14 +66,12 @@ int main(void) {
     uint32_t sample_idx = 0;
 
     for (;;) {
-        // Precise kernel wait (100ms tick)
         WaitForSingleObject(hTimer, INFINITE);
 
         update_cpu_telemetry(&cpu, read_msr_driver);
         get_ram_status(&ram);
         update_self_metrics(&self, cpu.active_core_count);
 
-        // Accumulate raw sample data
         acc.total_usage_pct += cpu.total_usage_pct;
         acc.package_temp_c  += cpu.package_temp_c;
         acc.max_voltage_v   += cpu.max_voltage_v;
@@ -106,7 +93,6 @@ int main(void) {
 
         sample_idx++;
 
-        // Render averaged metrics every 20 samples (2.0s)
         if (sample_idx >= SAMPLE_COUNT) {
             float inv_samples = 1.0f / (float)SAMPLE_COUNT;
 
@@ -146,7 +132,6 @@ int main(void) {
                    ((double)acc.self_private * inv_samples) / 1024.0);
             printf("=================================================================================\n");
 
-            // Reset accumulator and counter for the next window
             memset(&acc, 0, sizeof(TelemetryAccumulator));
             sample_idx = 0;
         }
