@@ -6,8 +6,7 @@
 [![Language](https://img.shields.io/badge/Language-C99-blue.svg)](https://en.wikipedia.org/wiki/C99)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20x64-0078D6.svg)](https://www.microsoft.com/windows)
 [![Kernel](https://img.shields.io/badge/Kernel-Ring%200%20(PawnIO)-red.svg)](https://github.com/namazso/PawnIO)
-[![License](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE)
-
+[![License](https://img.shields.io/badge/License-Proprietary-red.svg)](PROPRIETARY_LICENSE)
 **Microsecond-latency, zero-overhead low-level telemetry engine & in-game HUD backend for Windows x64.**
 
 [English](README.md) • [Türkçe](README_TR.md)
