@@ -18,20 +18,26 @@ typedef NTSTATUS(NTAPI *pfnNtQuerySystemInformation)(
     PULONG ReturnLength
 );
 
-// Intel Architected MSR Definitions
+// Intel MSR Tanımları
+#define MSR_INTEL_PLATFORM_INFO      0x000000CE
 #define MSR_INTEL_MPERF              0x000000E7
 #define MSR_INTEL_APERF              0x000000E8
 #define MSR_INTEL_PERF_STATUS        0x00000198
 #define MSR_INTEL_THERM_STATUS       0x0000019C
 #define MSR_INTEL_TEMPERATURE_TARGET 0x000001A2
+#define MSR_INTEL_RAPL_POWER_UNIT    0x00000606
+#define MSR_INTEL_PKG_ENERGY_STATUS  0x00000611
 
-// AMD Zen Architected MSR Definitions
+// AMD Zen MSR Tanımları
 #define MSR_AMD_MPERF                0x000000E7
 #define MSR_AMD_APERF                0x000000E8
 #define MSR_AMD_PSTATE_0             0xC0010064
 #define MSR_AMD_HARDWARE_THERMAL     0xC0010293
+#define MSR_AMD_RAPL_PWR_UNIT        0xC0010299
+#define MSR_AMD_CORE_ENERGY_STAT     0xC001029A
 
 static pfnNtQuerySystemInformation NtQuerySysInfo = NULL;
+static LARGE_INTEGER qpc_freq;
 
 CpuVendor detect_cpu_vendor(void) {
     int cpu_info[4];
@@ -67,6 +73,8 @@ int init_cpu_sensor(CpuTelemetry *telemetry, msr_reader_cb read_msr) {
     if (!telemetry) return 0;
     memset(telemetry, 0, sizeof(CpuTelemetry));
 
+    QueryPerformanceFrequency(&qpc_freq);
+
     HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
     if (!hNtdll) hNtdll = LoadLibraryA("ntdll.dll");
     if (!hNtdll) return 0;
@@ -78,7 +86,7 @@ int init_cpu_sensor(CpuTelemetry *telemetry, msr_reader_cb read_msr) {
     read_cpu_brand_string(telemetry->brand_string);
     telemetry->base_bclk_mhz = 100;
 
-    // Dynamic Topology Enumeration via PROCESSOR_RELATIONSHIP
+    // Dinamik Topoloji Tespiti
     DWORD length = 0;
     GetLogicalProcessorInformationEx(RelationProcessorCore, NULL, &length);
     PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX buffer = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)malloc(length);
@@ -94,7 +102,6 @@ int init_cpu_sensor(CpuTelemetry *telemetry, msr_reader_cb read_msr) {
                 PROCESSOR_RELATIONSHIP *core = &info->Processor;
                 CoreType core_type = CORE_TYPE_PERFORMANCE;
 
-                // Intel Heterogeneous Core Differentiation
                 if (telemetry->vendor == CPU_VENDOR_INTEL) {
                     if (core->EfficiencyClass == 0 && !(core->Flags & LTP_PC_SMT)) {
                         core_type = CORE_TYPE_EFFICIENCY;
@@ -136,13 +143,26 @@ int init_cpu_sensor(CpuTelemetry *telemetry, msr_reader_cb read_msr) {
         }
     }
 
-    // Hardware TjMax Resolution
-    if (telemetry->vendor == CPU_VENDOR_INTEL && read_msr) {
-        uint64_t msr_1a2_val = read_msr(0, MSR_INTEL_TEMPERATURE_TARGET);
-        telemetry->tjmax = (uint32_t)((msr_1a2_val >> 16) & 0xFF);
-        if (telemetry->tjmax == 0) telemetry->tjmax = 100;
+    // TjMax ve Enerji Birimi Cozumleme
+    if (read_msr) {
+        if (telemetry->vendor == CPU_VENDOR_INTEL) {
+            uint64_t msr_1a2_val = read_msr(0, MSR_INTEL_TEMPERATURE_TARGET);
+            telemetry->tjmax = (uint32_t)((msr_1a2_val >> 16) & 0xFF);
+            if (telemetry->tjmax == 0) telemetry->tjmax = 100;
+
+            uint64_t unit_msr = read_msr(0, MSR_INTEL_RAPL_POWER_UNIT);
+            uint32_t energy_status_units = (uint32_t)((unit_msr >> 8) & 0x1F);
+            telemetry->energy_unit_joules = 1.0 / (double)(1ULL << energy_status_units);
+        } else if (telemetry->vendor == CPU_VENDOR_AMD) {
+            telemetry->tjmax = 95;
+            uint64_t unit_msr = read_msr(0, MSR_AMD_RAPL_PWR_UNIT);
+            uint32_t energy_status_units = (uint32_t)((unit_msr >> 8) & 0x1F);
+            if (energy_status_units == 0) energy_status_units = 0x10;
+            telemetry->energy_unit_joules = 1.0 / (double)(1ULL << energy_status_units);
+        }
     } else {
-        telemetry->tjmax = 95; // Default AMD Zen Tctl/Tdie reference ceiling
+        telemetry->tjmax = 100;
+        telemetry->energy_unit_joules = 0.0;
     }
 
     return 1;
@@ -151,37 +171,43 @@ int init_cpu_sensor(CpuTelemetry *telemetry, msr_reader_cb read_msr) {
 static inline void read_intel_core_msr(CpuTelemetry *telemetry, uint32_t i, msr_reader_cb read_msr) {
     CoreTelemetry *core = &telemetry->cores[i];
 
-    // Thermal Delta (IA32_THERM_STATUS)
+    // 1. Termal ve Kisitlama Bayraklari (IA32_THERM_STATUS - 0x19C)
     uint64_t msr_19c = read_msr(i, MSR_INTEL_THERM_STATUS);
     if ((msr_19c >> 31) & 0x1) {
         uint32_t delta = (uint32_t)((msr_19c >> 16) & 0x7F);
         core->temp_c = (float)(telemetry->tjmax - delta);
-        core->is_throttling = (bool)((msr_19c >> 2) & 0x1);
+        core->is_thermal_throttling = (bool)(msr_19c & 0x1);
+        core->is_power_throttling   = (bool)((msr_19c >> 10) & 0x1);
     }
 
-    // Voltage (IA32_PERF_STATUS)
+    // 2. Voltaj Okumasi (IA32_PERF_STATUS - 0x198)
     uint64_t msr_198 = read_msr(i, MSR_INTEL_PERF_STATUS);
     uint32_t vid = (uint32_t)((msr_198 >> 32) & 0xFFFF);
     if (vid == 0) vid = (uint32_t)(msr_198 & 0xFFFF);
     core->voltage_v = (float)vid / 8192.0f;
 
-    // Prefer the requested/current ratio so idle C-states do not pull the displayed clock down.
-    uint32_t target_ratio = (uint32_t)((msr_198 >> 8) & 0xFF);
-    if (target_ratio > 0) {
-        core->freq_mhz = (float)telemetry->base_bclk_mhz * (float)target_ratio;
-    }
-
-    // Fall back to effective clock when IA32_PERF_STATUS does not expose a ratio.
+    // 3. Mimari Efektif Frekans Cozumlemesi
     uint64_t cur_mperf = read_msr(i, MSR_INTEL_MPERF);
     uint64_t cur_aperf = read_msr(i, MSR_INTEL_APERF);
 
-    if (target_ratio == 0 && core->prev_mperf > 0 && cur_mperf > core->prev_mperf) {
+    if (core->prev_mperf > 0 && cur_mperf > core->prev_mperf) {
         uint64_t d_mperf = cur_mperf - core->prev_mperf;
         uint64_t d_aperf = cur_aperf - core->prev_aperf;
+
         if (d_mperf > 0) {
-            core->freq_mhz = (float)telemetry->base_bclk_mhz * ((float)d_aperf / (float)d_mperf) * 10.0f;
+            uint64_t plat_info = read_msr(i, MSR_INTEL_PLATFORM_INFO);
+            uint32_t bus_ratio = (uint32_t)((plat_info >> 8) & 0xFF);
+            if (bus_ratio == 0) {
+                bus_ratio = (uint32_t)((msr_198 >> 8) & 0xFF);
+            }
+
+            float base_clock_mhz = (float)telemetry->base_bclk_mhz * (float)bus_ratio;
+            core->freq_mhz = base_clock_mhz * ((float)d_aperf / (float)d_mperf);
+        } else {
+            core->freq_mhz = 0.0f;
         }
     }
+
     core->prev_mperf = cur_mperf;
     core->prev_aperf = cur_aperf;
 }
@@ -189,35 +215,86 @@ static inline void read_intel_core_msr(CpuTelemetry *telemetry, uint32_t i, msr_
 static inline void read_amd_core_msr(CpuTelemetry *telemetry, uint32_t i, msr_reader_cb read_msr) {
     CoreTelemetry *core = &telemetry->cores[i];
 
-    // Multiplier & Voltage (P-State 0 MSR 0xC0010064)
+    // 1. P-State 0 Taban Frekans & Voltaj Cozumlemesi
     uint64_t pstate = read_msr(i, MSR_AMD_PSTATE_0);
-    uint32_t cpu_fid = (uint32_t)(pstate & 0xFF);
-    uint32_t cpu_did = (uint32_t)((pstate >> 8) & 0x3F);
-    if (cpu_did > 0) {
-        core->freq_mhz = (200.0f * (float)cpu_fid) / (float)cpu_did;
+    float p0_freq_mhz = 0.0f;
+
+    if (pstate != 0) {
+        uint32_t cpu_fid = (uint32_t)(pstate & 0xFF);
+        uint32_t cpu_did = (uint32_t)((pstate >> 8) & 0x3F);
+        if (cpu_did > 0) {
+            p0_freq_mhz = (200.0f * (float)cpu_fid) / (float)cpu_did;
+        }
+
+        uint32_t cpu_vid = (uint32_t)((pstate >> 14) & 0xFF);
+        core->voltage_v = 1.550f - ((float)cpu_vid * 0.00625f);
     }
 
-    uint32_t cpu_vid = (uint32_t)((pstate >> 14) & 0xFF);
-    core->voltage_v = 1.550f - ((float)cpu_vid * 0.00625f);
+    if (p0_freq_mhz == 0.0f) {
+        p0_freq_mhz = (float)telemetry->base_bclk_mhz * 36.0f;
+    }
 
-    // APERF / MPERF Dynamic Frequency Delta
+    // 2. APERF / MPERF Donanimsal Efektif Saat Hesabi
     uint64_t cur_mperf = read_msr(i, MSR_AMD_MPERF);
     uint64_t cur_aperf = read_msr(i, MSR_AMD_APERF);
+
     if (core->prev_mperf > 0 && cur_mperf > core->prev_mperf) {
         uint64_t d_mperf = cur_mperf - core->prev_mperf;
         uint64_t d_aperf = cur_aperf - core->prev_aperf;
+
         if (d_mperf > 0) {
-            core->freq_mhz = (float)telemetry->base_bclk_mhz * ((float)d_aperf / (float)d_mperf) * 10.0f;
+            core->freq_mhz = p0_freq_mhz * ((float)d_aperf / (float)d_mperf);
+        } else {
+            core->freq_mhz = 0.0f;
         }
+    } else {
+        core->freq_mhz = p0_freq_mhz;
     }
+
     core->prev_mperf = cur_mperf;
     core->prev_aperf = cur_aperf;
 
-    // Thermal State Fallback (Tctl Register 0xC0010293)
+    // 3. Termal ve HTC/PROCHOT Durumu (0xC0010293)
     uint64_t therm = read_msr(i, MSR_AMD_HARDWARE_THERMAL);
     if (therm != 0) {
         core->temp_c = (float)((therm >> 21) & 0x7FF) * 0.125f;
+        core->is_thermal_throttling = (bool)(therm & 0x1);
     }
+}
+
+static inline void update_package_energy(CpuTelemetry *telemetry, msr_reader_cb read_msr) {
+    if (!read_msr || telemetry->energy_unit_joules == 0.0) return;
+
+    LARGE_INTEGER now_qpc;
+    QueryPerformanceCounter(&now_qpc);
+
+    uint64_t energy_msr = 0;
+    if (telemetry->vendor == CPU_VENDOR_INTEL) {
+        energy_msr = read_msr(0, MSR_INTEL_PKG_ENERGY_STATUS);
+    } else if (telemetry->vendor == CPU_VENDOR_AMD) {
+        energy_msr = read_msr(0, MSR_AMD_CORE_ENERGY_STAT);
+    }
+
+    uint32_t current_energy_raw = (uint32_t)(energy_msr & 0xFFFFFFFF);
+
+    if (telemetry->prev_energy_time > 0 && now_qpc.QuadPart > (LONGLONG)telemetry->prev_energy_time) {
+        double delta_time_sec = (double)(now_qpc.QuadPart - telemetry->prev_energy_time) / (double)qpc_freq.QuadPart;
+
+        uint32_t delta_energy_raw;
+        if (current_energy_raw >= (uint32_t)telemetry->prev_energy_raw) {
+            delta_energy_raw = current_energy_raw - (uint32_t)telemetry->prev_energy_raw;
+        } else {
+            delta_energy_raw = (0xFFFFFFFF - (uint32_t)telemetry->prev_energy_raw) + current_energy_raw + 1;
+        }
+
+        if (delta_time_sec > 0.0) {
+            double joules = (double)delta_energy_raw * telemetry->energy_unit_joules;
+            telemetry->package_power_w = (float)(joules / delta_time_sec);
+        }
+    }
+
+    telemetry->prev_energy_raw = current_energy_raw;
+    telemetry->prev_energy_time = now_qpc.QuadPart;
 }
 
 void update_cpu_telemetry(CpuTelemetry *telemetry, msr_reader_cb read_msr) {
@@ -241,21 +318,21 @@ void update_cpu_telemetry(CpuTelemetry *telemetry, msr_reader_cb read_msr) {
     float max_voltage = 0.0f;
 
     for (uint32_t i = 0; i < telemetry->active_core_count; i++) {
-        uint64_t raw_idle = (uint64_t)perf_info[i].IdleTime.QuadPart;
+        uint64_t raw_idle   = (uint64_t)perf_info[i].IdleTime.QuadPart;
         uint64_t raw_kernel = (uint64_t)perf_info[i].KernelTime.QuadPart;
-        uint64_t raw_user = (uint64_t)perf_info[i].UserTime.QuadPart;
+        uint64_t raw_user   = (uint64_t)perf_info[i].UserTime.QuadPart;
 
         if (telemetry->cores[i].prev_kernel_time == 0 && telemetry->cores[i].prev_user_time == 0) {
-            telemetry->cores[i].prev_idle_time = raw_idle;
+            telemetry->cores[i].prev_idle_time   = raw_idle;
             telemetry->cores[i].prev_kernel_time = raw_kernel;
-            telemetry->cores[i].prev_user_time = raw_user;
+            telemetry->cores[i].prev_user_time   = raw_user;
             continue;
         }
 
-        uint64_t d_idle = raw_idle - telemetry->cores[i].prev_idle_time;
+        uint64_t d_idle   = raw_idle - telemetry->cores[i].prev_idle_time;
         uint64_t d_kernel = raw_kernel - telemetry->cores[i].prev_kernel_time;
-        uint64_t d_user = raw_user - telemetry->cores[i].prev_user_time;
-        uint64_t d_total = d_kernel + d_user;
+        uint64_t d_user   = raw_user - telemetry->cores[i].prev_user_time;
+        uint64_t d_total  = d_kernel + d_user;
 
         if (d_total > 0) {
             float usage = (1.0f - ((float)d_idle / (float)d_total)) * 100.0f;
@@ -269,9 +346,9 @@ void update_cpu_telemetry(CpuTelemetry *telemetry, msr_reader_cb read_msr) {
         total_delta_idle += d_idle;
         total_delta_system += d_total;
 
-        telemetry->cores[i].prev_idle_time = raw_idle;
+        telemetry->cores[i].prev_idle_time   = raw_idle;
         telemetry->cores[i].prev_kernel_time = raw_kernel;
-        telemetry->cores[i].prev_user_time = raw_user;
+        telemetry->cores[i].prev_user_time   = raw_user;
 
         if (read_msr) {
             if (telemetry->vendor == CPU_VENDOR_INTEL) {
@@ -285,12 +362,17 @@ void update_cpu_telemetry(CpuTelemetry *telemetry, msr_reader_cb read_msr) {
         }
     }
 
+    if (read_msr) {
+        update_package_energy(telemetry, read_msr);
+    }
+
     if (total_delta_system > 0) {
         float total_usage = (1.0f - ((float)total_delta_idle / (float)total_delta_system)) * 100.0f;
         if (total_usage < 0.0f) total_usage = 0.0f;
         if (total_usage > 100.0f) total_usage = 100.0f;
         telemetry->total_usage_pct = total_usage;
     }
+
     telemetry->package_temp_c = max_temp;
     telemetry->max_voltage_v = max_voltage;
 }

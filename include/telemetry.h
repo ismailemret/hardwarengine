@@ -26,9 +26,16 @@ typedef enum {
 
 typedef struct {
     DWORD memory_load;
-    unsigned long long total_ram;
-    unsigned long long avail_ram;
-    unsigned long long used_ram;
+    uint64_t total_phys_ram;
+    uint64_t avail_phys_ram;
+    uint64_t used_phys_ram;
+    uint64_t installed_hardware_ram;
+    uint64_t hardware_reserved_bytes;
+    uint64_t paged_pool_bytes;
+    uint64_t non_paged_pool_bytes;
+    uint64_t commit_total_bytes;
+    uint64_t commit_limit_bytes;
+    uint64_t commit_peak_bytes;
 } RAMStatus;
 
 HW_API int get_ram_status(RAMStatus *status);
@@ -42,10 +49,12 @@ typedef struct {
     uint64_t prev_kernel_time;
     uint64_t prev_user_time;
     float temp_c;
-    bool is_throttling;
+    bool is_thermal_throttling;
+    bool is_power_throttling;
     float freq_mhz;
     uint64_t prev_mperf;
     uint64_t prev_aperf;
+    uint64_t prev_tsc;
     float voltage_v;
 } CoreTelemetry;
 
@@ -54,11 +63,15 @@ typedef struct {
     char brand_string[49];
     float total_usage_pct;
     float package_temp_c;
+    float package_power_w;
     float max_voltage_v;
     uint32_t tjmax;
     uint32_t base_bclk_mhz;
     uint32_t active_core_count;
     uint32_t physical_core_count;
+    double energy_unit_joules;
+    uint64_t prev_energy_raw;
+    uint64_t prev_energy_time;
     CoreTelemetry cores[MAX_LOGICAL_CORES];
 } CpuTelemetry;
 

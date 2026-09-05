@@ -92,6 +92,7 @@ bool init_kernel_driver(CpuVendor vendor) {
     pawnio_load_fn pawnio_load = (pawnio_load_fn)GetProcAddress(hPawnIOLib, "pawnio_load");
     pawnio_execute = (pawnio_execute_fn)GetProcAddress(hPawnIOLib, "pawnio_execute");
     pawnio_close = (pawnio_close_fn)GetProcAddress(hPawnIOLib, "pawnio_close");
+
     if (!pawnio_open || !pawnio_load || !pawnio_execute || !pawnio_close ||
         FAILED(pawnio_open(&pawnio_handle)) || !load_file(module_path, &module, &module_size) ||
         FAILED(pawnio_load(pawnio_handle, module, module_size))) {
@@ -119,17 +120,23 @@ void close_kernel_driver(void) {
 }
 
 uint64_t read_msr_driver(uint32_t core_id, uint32_t msr_addr) {
-    (void)core_id;
-    if (!hPawnIO || !pawnio_execute) return 0;
+    if (!hPawnIO || !pawnio_execute || core_id >= MAX_LOGICAL_CORES) return 0;
 
-    DWORD_PTR mask = (DWORD_PTR)1 << core_id;
-    DWORD_PTR old_mask = SetThreadAffinityMask(GetCurrentThread(), mask);
-    ULONG64 input = msr_addr;
+    DWORD_PTR target_mask = ((DWORD_PTR)1) << core_id;
+    HANDLE current_thread = GetCurrentThread();
+    DWORD_PTR old_mask = SetThreadAffinityMask(current_thread, target_mask);
+
+    if (old_mask == 0) return 0;
+
+    ULONG64 input = (ULONG64)msr_addr;
     ULONG64 output = 0;
     SIZE_T return_size = 0;
+
     HRESULT status = pawnio_execute(hPawnIO, "ioctl_read_msr", &input, 1,
                                     &output, 1, &return_size);
-    if (old_mask) SetThreadAffinityMask(GetCurrentThread(), old_mask);
+
+    SetThreadAffinityMask(current_thread, old_mask);
+
     if (FAILED(status) || return_size != 1) return 0;
     return output;
 }
