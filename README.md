@@ -2,15 +2,15 @@
 
 # hardwarengine
 
-[![Language](https://img.shields.io/badge/Language-C99-blue.svg)](https://en.wikipedia.org/wiki/C99)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20x64-0078D6.svg)](https://www.microsoft.com/windows)
-[![Kernel](https://img.shields.io/badge/Kernel-Ring%200%20(PawnIO)-red.svg)](https://github.com/namazso/PawnIO)
+[![Language](.github/badges/language.svg)](https://en.wikipedia.org/wiki/C99)
+[![Platform](.github/badges/platform.svg)](https://www.microsoft.com/windows)
+[![Kernel](.github/badges/kernel.svg)](https://github.com/namazso/PawnIO)
 [![CodeQL](https://github.com/ismailemret/hardwarengine/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/ismailemret/hardwarengine/actions/workflows/github-code-scanning/codeql)
-[![License](https://img.shields.io/badge/License-Proprietary-red.svg)](PROPRIETARY_LICENSE)
+[![License](.github/badges/license.svg)](PROPRIETARY_LICENSE)
 
-**Microsecond-latency, zero-overhead low-level telemetry engine & in-game HUD backend for Windows x64.**
+<p><strong>Microsecond-latency, zero-overhead low-level telemetry engine & in-game HUD backend for Windows x64.</strong></p>
 
-[English](README.md) • [Türkçe](README_TR.md)
+<p><a href="README.md">English</a> • <a href="README_TR.md">Türkçe</a></p>
 
 </div>
 
