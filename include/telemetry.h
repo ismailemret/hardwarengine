@@ -11,20 +11,24 @@
 #define MAX_LOGICAL_CORES 64
 #define MAX_GPUS 4
 
+// Callback used to read a model-specific MSR.
 typedef uint64_t (*msr_reader_cb)(uint32_t core_id, uint32_t msr_addr);
-// CPU vendor and core type enums
+
+// Supported CPU vendors.
 typedef enum {
     CPU_VENDOR_UNKNOWN = 0,
     CPU_VENDOR_INTEL,
     CPU_VENDOR_AMD
 } CpuVendor;
 
+// Logical core performance classes.
 typedef enum {
     CORE_TYPE_UNKNOWN = 0,
     CORE_TYPE_PERFORMANCE,
     CORE_TYPE_EFFICIENCY
 } CoreType;
-// RAM status structure
+
+// System memory telemetry.
 typedef struct {
     DWORD memory_load;
     uint64_t total_phys_ram;
@@ -40,7 +44,8 @@ typedef struct {
 } RAMStatus;
 
 HW_API int get_ram_status(RAMStatus *status);
-// CPU telemetry structures and functions
+
+// Per-core CPU telemetry.
 typedef struct {
     uint32_t core_id;
     uint32_t physical_id;
@@ -75,11 +80,13 @@ typedef struct {
     uint64_t prev_energy_time;
     CoreTelemetry cores[MAX_LOGICAL_CORES];
 } CpuTelemetry;
-// Function prototypes
+
+// CPU sensor API.
 HW_API int init_cpu_sensor(CpuTelemetry *telemetry, msr_reader_cb read_msr);
 HW_API void update_cpu_telemetry(CpuTelemetry *telemetry, msr_reader_cb read_msr);
 HW_API CpuVendor detect_cpu_vendor(void);
-// GPU telemetry structures and functions
+
+// Supported GPU vendors.
 typedef enum {
     GPU_VENDOR_UNKNOWN = 0,
     GPU_VENDOR_NVIDIA,
@@ -87,6 +94,7 @@ typedef enum {
     GPU_VENDOR_INTEL
 } GpuVendor;
 
+// Per-device GPU telemetry.
 typedef struct {
     uint32_t gpu_index;
     GpuVendor vendor;
@@ -111,6 +119,7 @@ typedef struct {
     uint64_t vram_free_bytes;
 } GpuDeviceTelemetry;
 
+// GPU telemetry collection state.
 typedef struct {
     uint32_t gpu_count;
     GpuDeviceTelemetry gpus[MAX_GPUS];
@@ -120,7 +129,7 @@ int init_gpu_sensor(GpuTelemetry *telemetry);
 void update_gpu_telemetry(GpuTelemetry *telemetry);
 void shutdown_gpu_sensor(void);
 
-// Process self-metrics structure and functions
+// Process resource metrics.
 typedef struct {
     float cpu_usage_pct;
     uint64_t working_set_bytes;
@@ -128,10 +137,12 @@ typedef struct {
     uint64_t prev_process_time;
     uint64_t prev_wall_time;
 } SelfMetrics;
-// Function prototypes
+
+// Process metrics API.
 HW_API void init_self_metrics(SelfMetrics *metrics);
 HW_API void update_self_metrics(SelfMetrics *metrics, uint32_t logical_core_count);
-// Kernel driver interaction functions
+
+// Kernel driver API.
 HW_API bool init_kernel_driver(CpuVendor vendor);
 HW_API void close_kernel_driver(void);
 HW_API uint64_t read_msr_driver(uint32_t core_id, uint32_t msr_addr);
