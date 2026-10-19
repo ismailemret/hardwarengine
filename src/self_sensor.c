@@ -5,6 +5,7 @@ static inline uint64_t filetime_to_u64(FILETIME ft) {
 }
 
 void init_self_metrics(SelfMetrics *metrics) {
+    // Capture the initial process and wall-clock counters.
     if (!metrics) return;
     memset(metrics, 0, sizeof(SelfMetrics));
 
@@ -19,6 +20,7 @@ void init_self_metrics(SelfMetrics *metrics) {
 }
 
 void update_self_metrics(SelfMetrics *metrics, uint32_t logical_core_count) {
+    // Derive process CPU usage from counter deltas.
     if (!metrics || logical_core_count == 0) return;
 
     FILETIME creation_time, exit_time, kernel_time, user_time;
@@ -42,7 +44,7 @@ void update_self_metrics(SelfMetrics *metrics, uint32_t logical_core_count) {
     metrics->prev_process_time = current_process_time;
     metrics->prev_wall_time    = current_wall_time;
 
-    // Read process memory counters via PSAPI
+    // Read process memory counters through PSAPI.
     PROCESS_MEMORY_COUNTERS_EX pmc;
     if (K32GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof(pmc))) {
         metrics->working_set_bytes = pmc.WorkingSetSize;

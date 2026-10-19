@@ -12,7 +12,6 @@ typedef LONG NTSTATUS;
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 #endif
 
-// SDK cakismasini onlemek amaciyla ozel adlandirilmis tam performans yapisi
 typedef struct _HW_SYSTEM_PERFORMANCE_INFO {
     LARGE_INTEGER IdleProcessTime;
     LARGE_INTEGER IoReadTransferCount;
@@ -122,7 +121,6 @@ int get_ram_status(RAMStatus *status) {
 
     init_nt_helpers();
 
-    // 1. Standart Fiziksel Bellek Telemetrisi
     MEMORYSTATUSEX mem_stat;
     mem_stat.dwLength = sizeof(MEMORYSTATUSEX);
     if (!GlobalMemoryStatusEx(&mem_stat)) {
@@ -134,7 +132,6 @@ int get_ram_status(RAMStatus *status) {
     status->avail_phys_ram = mem_stat.ullAvailPhys;
     status->used_phys_ram  = mem_stat.ullTotalPhys - mem_stat.ullAvailPhys;
 
-    // 2. BIOS / Donanima Rezerve Edilmis Bellek Tespiti
     ULONGLONG installed_ram_kb = 0;
     if (GetPhysicallyInstalledSystemMemory(&installed_ram_kb)) {
         status->installed_hardware_ram = (uint64_t)installed_ram_kb * 1024ULL;
@@ -148,7 +145,6 @@ int get_ram_status(RAMStatus *status) {
         status->hardware_reserved_bytes = 0;
     }
 
-    // 3. NT Performance Havuzlari ve Commit Takibi
     if (pNtQuerySysInfo) {
         HW_SYSTEM_PERFORMANCE_INFO perf_info;
         ULONG return_len = 0;

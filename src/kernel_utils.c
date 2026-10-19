@@ -17,6 +17,7 @@ static pawnio_execute_fn pawnio_execute = NULL;
 static pawnio_close_fn pawnio_close = NULL;
 
 static bool load_file(const char *path, UCHAR **data, SIZE_T *size) {
+    // Read the driver payload into process heap memory.
     HANDLE file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL,
                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (file == INVALID_HANDLE_VALUE) return false;
@@ -46,6 +47,7 @@ static bool load_file(const char *path, UCHAR **data, SIZE_T *size) {
 }
 
 static bool get_application_path(char *path, DWORD path_size) {
+    // Resolve the directory containing the executable.
     DWORD length = GetModuleFileNameA(NULL, path, path_size);
     if (!length || length >= path_size) return false;
     char *slash = strrchr(path, '\\');
@@ -55,6 +57,7 @@ static bool get_application_path(char *path, DWORD path_size) {
 }
 
 bool init_kernel_driver(CpuVendor vendor) {
+    // Load PawnIO and the vendor-specific MSR module.
     char app_path[MAX_PATH];
     char module_path[MAX_PATH];
     UCHAR *module = NULL;
@@ -109,6 +112,7 @@ bool init_kernel_driver(CpuVendor vendor) {
 }
 
 void close_kernel_driver(void) {
+    // Release the PawnIO session and library.
     if (hPawnIO && pawnio_close) {
         pawnio_close(hPawnIO);
         hPawnIO = NULL;
@@ -120,6 +124,7 @@ void close_kernel_driver(void) {
 }
 
 uint64_t read_msr_driver(uint32_t core_id, uint32_t msr_addr) {
+    // Execute an MSR read on the requested logical core.
     if (!hPawnIO || !pawnio_execute || core_id >= MAX_LOGICAL_CORES) return 0;
 
     DWORD_PTR target_mask = ((DWORD_PTR)1) << core_id;

@@ -18,7 +18,6 @@ typedef NTSTATUS(NTAPI *pfnNtQuerySystemInformation)(
     PULONG ReturnLength
 );
 
-// Intel MSR Tanımları
 #define MSR_INTEL_PLATFORM_INFO      0x000000CE
 #define MSR_INTEL_MPERF              0x000000E7
 #define MSR_INTEL_APERF              0x000000E8
@@ -28,7 +27,6 @@ typedef NTSTATUS(NTAPI *pfnNtQuerySystemInformation)(
 #define MSR_INTEL_RAPL_POWER_UNIT    0x00000606
 #define MSR_INTEL_PKG_ENERGY_STATUS  0x00000611
 
-// AMD Zen MSR Tanımları
 #define MSR_AMD_MPERF                0x000000E7
 #define MSR_AMD_APERF                0x000000E8
 #define MSR_AMD_PSTATE_0             0xC0010064
@@ -86,7 +84,6 @@ int init_cpu_sensor(CpuTelemetry *telemetry, msr_reader_cb read_msr) {
     read_cpu_brand_string(telemetry->brand_string);
     telemetry->base_bclk_mhz = 100;
 
-    // Dinamik Topoloji Tespiti
     DWORD length = 0;
     GetLogicalProcessorInformationEx(RelationProcessorCore, NULL, &length);
     PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX buffer = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)malloc(length);
@@ -143,7 +140,6 @@ int init_cpu_sensor(CpuTelemetry *telemetry, msr_reader_cb read_msr) {
         }
     }
 
-    // TjMax ve Enerji Birimi Cozumleme
     if (read_msr) {
         if (telemetry->vendor == CPU_VENDOR_INTEL) {
             uint64_t msr_1a2_val = read_msr(0, MSR_INTEL_TEMPERATURE_TARGET);
@@ -171,7 +167,6 @@ int init_cpu_sensor(CpuTelemetry *telemetry, msr_reader_cb read_msr) {
 static inline void read_intel_core_msr(CpuTelemetry *telemetry, uint32_t i, msr_reader_cb read_msr) {
     CoreTelemetry *core = &telemetry->cores[i];
 
-    // 1. Termal ve Kisitlama Bayraklari (IA32_THERM_STATUS - 0x19C)
     uint64_t msr_19c = read_msr(i, MSR_INTEL_THERM_STATUS);
     if ((msr_19c >> 31) & 0x1) {
         uint32_t delta = (uint32_t)((msr_19c >> 16) & 0x7F);
@@ -180,13 +175,11 @@ static inline void read_intel_core_msr(CpuTelemetry *telemetry, uint32_t i, msr_
         core->is_power_throttling   = (bool)((msr_19c >> 10) & 0x1);
     }
 
-    // 2. Voltaj Okumasi (IA32_PERF_STATUS - 0x198)
     uint64_t msr_198 = read_msr(i, MSR_INTEL_PERF_STATUS);
     uint32_t vid = (uint32_t)((msr_198 >> 32) & 0xFFFF);
     if (vid == 0) vid = (uint32_t)(msr_198 & 0xFFFF);
     core->voltage_v = (float)vid / 8192.0f;
 
-    // 3. Mimari Efektif Frekans Cozumlemesi
     uint64_t cur_mperf = read_msr(i, MSR_INTEL_MPERF);
     uint64_t cur_aperf = read_msr(i, MSR_INTEL_APERF);
 
@@ -215,7 +208,6 @@ static inline void read_intel_core_msr(CpuTelemetry *telemetry, uint32_t i, msr_
 static inline void read_amd_core_msr(CpuTelemetry *telemetry, uint32_t i, msr_reader_cb read_msr) {
     CoreTelemetry *core = &telemetry->cores[i];
 
-    // 1. P-State 0 Taban Frekans & Voltaj Cozumlemesi
     uint64_t pstate = read_msr(i, MSR_AMD_PSTATE_0);
     float p0_freq_mhz = 0.0f;
 
@@ -234,7 +226,6 @@ static inline void read_amd_core_msr(CpuTelemetry *telemetry, uint32_t i, msr_re
         p0_freq_mhz = (float)telemetry->base_bclk_mhz * 36.0f;
     }
 
-    // 2. APERF / MPERF Donanimsal Efektif Saat Hesabi
     uint64_t cur_mperf = read_msr(i, MSR_AMD_MPERF);
     uint64_t cur_aperf = read_msr(i, MSR_AMD_APERF);
 
@@ -254,7 +245,6 @@ static inline void read_amd_core_msr(CpuTelemetry *telemetry, uint32_t i, msr_re
     core->prev_mperf = cur_mperf;
     core->prev_aperf = cur_aperf;
 
-    // 3. Termal ve HTC/PROCHOT Durumu (0xC0010293)
     uint64_t therm = read_msr(i, MSR_AMD_HARDWARE_THERMAL);
     if (therm != 0) {
         core->temp_c = (float)((therm >> 21) & 0x7FF) * 0.125f;
