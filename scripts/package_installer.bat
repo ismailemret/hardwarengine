@@ -15,13 +15,13 @@ if errorlevel 1 (
     exit /b 1
 )
 
-:: Bağımlılıkları kontrol et ve bin/ altına hazırla
+:: Bagimliliklari kontrol et
 if exist "%ROOT%\PawnIOLib.dll" copy /y "%ROOT%\PawnIOLib.dll" "%ROOT%\bin\" >nul 2>&1
 if exist "%ProgramFiles%\PawnIO\PawnIOLib.dll" (
     if not exist "%ROOT%\bin\PawnIOLib.dll" copy /y "%ProgramFiles%\PawnIO\PawnIOLib.dll" "%ROOT%\bin\" >nul 2>&1
 )
 
-:: VBS wrapper'ları
+:: VBS wrapper'lari
 (
     echo Set WshShell = CreateObject^("WScript.Shell"^)
     echo WshShell.Run "cmd.exe /c setup.bat", 0, True
@@ -79,7 +79,7 @@ set "SED_FILE=%ROOT%\scripts\installer.sed"
     echo FILE4="hardwarengine.exe"
     echo FILE5="PawnIOLib.dll"
     echo FILE6="IntelMSR.bin"
-    echo FILE7="Memory"
+    echo FILE7="AMDFamily17.bin"
 ) > "%SED_FILE%"
 
 echo [*] Setup.exe olusturuluyor...

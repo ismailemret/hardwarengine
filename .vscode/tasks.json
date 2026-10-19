@@ -19,6 +19,18 @@
             "detail": "Compile core engine and CLI via scripts\\build.bat"
         },
         {
+            "type": "shell",
+            "label": "Run hardwarengine",
+            "command": "${workspaceFolder}\\bin\\run.bat",
+            "args": [],
+            "options": {
+                "cwd": "${workspaceFolder}\\bin"
+            },
+            "problemMatcher": [],
+            "group": "test",
+            "detail": "Launch the local hardwarengine executable via bin\\run.bat"
+        },
+        {
             "type": "cppbuild",
             "label": "C/C++: cl.exe build active file",
             "command": "cmd",

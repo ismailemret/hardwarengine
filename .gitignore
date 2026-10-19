@@ -22,8 +22,12 @@ scripts/*.sed
 Setup.exe
 
 # GUI sources
-gui/
+/src/gui.c
+/include/gui.h
 
 # VS Code settings
 .vscode/*
 !.vscode/tasks.json
+
+*.DDF
+~*
